@@ -11,14 +11,26 @@ A tool for tracking my daily tasks. Three columns: **Floating**, **Today**, **Co
 - Saved to the space's database, cached locally, and retried if a save fails. Syncs across devices.
 - Claude can **read** tasks through the Spacefast API (`getSpaceDatabaseDump`, table `items`).
 
-Linear and HubSpot cards are styled but not wired up yet. See the issues.
+### Linear and HubSpot
+
+Open Linear issues and HubSpot tasks assigned to Jason load live from `GET /api/external` on page load, on Sync, when the window regains focus (after 1 min), and every 10 minutes. Done and due-date changes go back through `POST /api/external/write`. "Done" waits out the 5-second undo window first.
+
+Needs two **secret** space variables in Spacefast:
+
+| Name | What |
+| --- | --- |
+| `LINEAR_API_KEY` | Linear personal API key (Settings → Account → Security & access) |
+| `HUBSPOT_TOKEN` | HubSpot private app token with `crm.objects.contacts.read`, `crm.objects.contacts.write`, `crm.objects.deals.read`, `crm.objects.companies.read` |
+
+Optional: `HUBSPOT_OWNER_ID` and `HUBSPOT_PORTAL_ID` (default to Jason's).
 
 ## Layout
 
 | File | What it is |
 | --- | --- |
 | `sf.jsonc` | Spacefast app config (`runtime.kind: "zero"`) |
-| `server/index.ts` | Capsule: one `items` table plus `GET /api/state`, `POST /api/ops`, `GET /api/health` |
+| `server/index.ts` | Capsule: one `items` table plus `GET /api/state`, `POST /api/ops`, `GET /api/external`, `POST /api/external/write`, `GET /api/health` |
+| `server/external.ts` | Linear GraphQL and HubSpot CRM calls |
 | `index.html` | The whole UI: markup, styles and script in one file |
 
 ### Data model

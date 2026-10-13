@@ -1,6 +1,7 @@
 // Day Board server: one table of JSON records (tasks and repeat rules), keyed by the page's own ids.
 // The page loads everything with GET /api/state and saves changes with POST /api/ops.
 import { capsule, endpoint, json, string, table } from "@spacefast/zero/server";
+import { readLinear, readHubspot, writeLinear, writeHubspot, SourceError } from "./external";
 
 const KINDS = ["task", "series"];
 const MAX_OPS = 25; // keeps each request well under the 64-statement transaction limit
@@ -53,6 +54,41 @@ export default capsule({
         applied++;
       }
       return json({ ok: true, applied });
+    }),
+
+    // Live Linear issues and HubSpot tasks assigned to Jason. Each source reports its own error,
+    // so one broken key never hides the other source.
+    external: endpoint({ method: "GET", path: "/api/external", mode: "read" }, async (ctx) => {
+      const env = (ctx as any).env || {};
+      const settle = async (fn: (e: any) => Promise<any[]>, configured: boolean) => {
+        if (!configured) return { ok: false, configured: false, items: [] };
+        try { return { ok: true, configured: true, items: await fn(env) }; }
+        catch (e: any) {
+          ctx.log.warn("external read failed", String(e && e.message));
+          return { ok: false, configured: true, error: String((e && e.message) || e), items: [] };
+        }
+      };
+      const [lin, hub] = await Promise.all([
+        settle(readLinear, Boolean(env.LINEAR_API_KEY)),
+        settle(readHubspot, Boolean(env.HUBSPOT_TOKEN)),
+      ]);
+      return json({ linear: lin, hubspot: hub, at: new Date().toISOString() });
+    }),
+
+    // Write back one change: { source: "linear"|"hubspot", extId, action: "done"|"due", due?, ts?, doneStateId? }
+    externalWrite: endpoint({ method: "POST", path: "/api/external/write", mode: "write" }, async (ctx, req) => {
+      const env = (ctx as any).env || {};
+      let op: any;
+      try { op = await req.json(); } catch (e) { return json({ ok: false, error: "Body must be JSON." }, { status: 400 }); }
+      try {
+        if (op && op.source === "linear") await writeLinear(env, op);
+        else if (op && op.source === "hubspot") await writeHubspot(env, op);
+        else return json({ ok: false, error: "Unknown source." }, { status: 400 });
+        return json({ ok: true });
+      } catch (e: any) {
+        ctx.log.warn("external write failed", String(e && e.message));
+        return json({ ok: false, error: String((e && e.message) || e) }, { status: e instanceof SourceError ? e.status : 502 });
+      }
     }),
 
     health: endpoint({ method: "GET", path: "/api/health", mode: "read" }, async (ctx) => {
