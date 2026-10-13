@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day Board</title>
+<style>
+/* Layout: three working columns (Floating · Today · Coming up) that stack below 760px. Light-only by choice: Newspack blue header and accents, source colors on card edges and labels. */
+:root{
+  --bg:#f2f4f3; --panel:#fafbfa; --card:#ffffff; --ink:#16201c; --muted:#5d6a65; --faint:#8f9c97;
+  --line:#dbe1de;
+  --brand:#003DA5;          /* Newspack blue: header, fills, borders, focus */
+  --brand-ink:#ffffff;      /* text on brand fills */
+  --brand-text:#003DA5;     /* blue text on white */
+  --brand-soft:#e5ecf8;     /* drop-target tint */
+  --hub:#0E8A7D; --lin:#000000; --me:#003DA5;
+  --warn:#b4372a; --warn-soft:#fbeceb;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.4px/1.45 var(--sans);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+.top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--brand);color:var(--brand-ink);position:sticky;top:0;z-index:5}
+.top h1{font-size:16.5px;font-weight:700;margin:0}
+.top .date{font-size:14.3px;opacity:.85}
+.status-bad{color:#ffd7d2;font-weight:600}
+.proto{font-size:12.1px;font-weight:600;letter-spacing:.04em;border:1px solid rgba(255,255,255,.5);padding:1px 7px;border-radius:4px}
+.spacer{flex:1}
+.sync{display:flex;align-items:center;gap:8px;font-size:13.2px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:5px 11px;font-size:14.3px;color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{border-color:var(--faint)}
+.top .btn{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.95)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+.btn.danger{background:var(--warn);border-color:var(--warn);color:#fff}
+.btn.small{padding:2px 9px;font-size:13.2px}
+.spin{display:inline-block}
+.spinning .spin{animation:spin .7s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.board{display:grid;grid-template-columns:minmax(250px,1fr) minmax(270px,1.15fr) minmax(250px,1fr);gap:14px;padding:14px 16px 40px;align-items:start}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0;display:flex;flex-direction:column}
+.col-h{display:flex;align-items:baseline;gap:8px;padding:12px 12px 8px}
+.col-h h2{margin:0;font-size:17px;font-weight:650}
+.count{font-size:13.2px;color:var(--faint)}
+.col-h .tog{display:none;margin-left:auto;border:0;background:none;color:var(--muted);font-size:13.2px}
+.col-b{padding:4px 8px 10px;min-height:80px;display:flex;flex-direction:column;gap:6px}
+.col-b.drop-ok{background:var(--brand-soft);border-radius:0 0 10px 10px}
+
+.add{margin:0 8px 6px;position:relative}
+.add input{width:100%;border:1px solid var(--line);background:var(--card);border-radius:7px;padding:9px 30px 9px 10px;font:inherit;color:var(--ink)}
+.add input::placeholder{color:var(--faint)}
+.add .hint{position:absolute;right:8px;top:9px;font-size:12.1px;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:0 5px;pointer-events:none}
+.add .parsed{font-size:13.2px;color:var(--brand-text);padding:4px 2px 0;min-height:19px}
+
+.card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--me);border-radius:7px;padding:8px 8px 8px 9px;display:grid;grid-template-columns:18px 1fr;gap:2px 8px;cursor:grab;position:relative;transition:opacity .2s,transform .2s}
+.card.hub{border-left-color:var(--hub)}
+.card.lin{border-left-color:var(--lin)}
+.card.dragging{opacity:.4}
+.card.drop-before{box-shadow:0 -3px 0 0 var(--brand)}
+.card.stale{opacity:.55}
+.card.leaving{opacity:0;transform:translateX(8px)}
+.card.open{cursor:default;box-shadow:0 2px 12px rgba(0,0,0,.08);border-color:var(--faint)}
+.card.open.hub{border-left-color:var(--hub)} .card.open.lin{border-left-color:var(--lin)} .card.open.me{border-left-color:var(--me)}
+.card .chk{grid-row:1/3;margin-top:2px;width:17px;height:17px;border:1.5px solid var(--faint);border-radius:4px;background:none;padding:0}
+.card .chk:hover{border-color:var(--brand);background:var(--brand-soft)}
+.card.hub .chk:hover{border-color:var(--hub)} .card.lin .chk:hover{border-color:var(--lin)}
+.card .t{min-width:0;overflow-wrap:anywhere}
+.meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:13.2px;color:var(--muted);min-width:0}
+.src{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.src.hub{color:var(--hub)} .src.lin{color:var(--lin)}
+.ctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.due{font-size:13.2px;color:var(--faint)}
+.over{font-size:12.1px;font-weight:600;color:var(--warn);background:var(--warn-soft);padding:0 5px;border-radius:3px}
+.view{text-decoration:none;font-size:13.2px;font-weight:500}
+.card.hub .view{color:var(--hub)} .card.lin .view{color:var(--lin)}
+.view:hover{text-decoration:underline}
+.rec{font-size:13.2px;color:var(--muted)}
+.acts{grid-column:2;display:none;gap:4px;flex-wrap:wrap;padding-top:4px}
+.card:not(.open):hover .acts,.card:not(.open):focus-within .acts{display:flex}
+.acts button,.acts label{border:1px solid var(--line);background:var(--panel);border-radius:5px;padding:1px 8px;font-size:13.2px;color:var(--muted);position:relative}
+.acts button:hover,.acts label:hover{color:var(--ink);border-color:var(--faint)}
+input[type=date].overlay{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.acts .del{margin-left:auto}
+
+/* expanded card */
+.exp{grid-column:1/-1;display:grid;gap:8px;padding-top:8px;margin-top:4px;border-top:1px solid var(--line)}
+.e-title{font:600 15.4px var(--sans);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 7px;width:100%;background:var(--card)}
+.e-body{font:inherit;font-size:14.3px;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;resize:vertical;min-height:62px;background:var(--panel)}
+.e-desc{font-size:14.3px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
+.e-desc.empty{color:var(--faint)}
+.e-desc a,.e-links a{color:var(--brand-text);overflow-wrap:anywhere}
+.card.hub .e-desc a{color:var(--hub)} .card.lin .e-desc a{color:var(--lin)}
+.e-links{display:flex;flex-direction:column;gap:2px;font-size:13.2px}
+.e-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.e-row .lbl{font-size:12.1px;font-weight:600;color:var(--muted);margin-right:2px}
+.e-row label.btn{position:relative}
+.e-row select{font:inherit;font-size:13.2px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.e-note{margin:0;font-size:12.1px;color:var(--muted)}
+.e-foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.linkbtn{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;font-size:13.2px}
+
+.group-h{display:flex;align-items:center;gap:8px;font-size:12.65px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 4px 2px;border-radius:5px}
+.group-h .n{font-weight:500;color:var(--faint)}
+.group-h.drop-ok{background:var(--brand-soft);color:var(--brand-text)}
+.group-h.over-h{color:var(--warn)}
+.bulk{margin-left:auto;border:0;background:none;color:var(--warn);font-size:13.2px;font-weight:500;text-transform:none;letter-spacing:0;padding:0}
+.bulk:hover{text-decoration:underline}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--warn-soft);border-radius:7px;padding:8px 10px;font-size:14.3px}
+.later{border:1px dashed var(--line);border-radius:7px;background:none;padding:7px 10px;text-align:left;color:var(--muted);font-size:14.3px}
+.later.drop-ok{background:var(--brand-soft);color:var(--brand-text);border-color:var(--brand)}
+.empty-col{color:var(--faint);font-size:14.3px;padding:6px 4px}
+
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:8px;padding:9px 14px;font-size:14.3px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:20;max-width:calc(100% - 32px)}
+.toast button{border:0;background:none;color:#9dbbf2;font-weight:600;padding:0}
+
+.modal{position:fixed;inset:0;background:rgba(15,20,30,.35);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(330px,100%);display:grid;gap:12px}
+.sheet h3{margin:0;font-size:15.4px}
+.sheet input{font:inherit;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+.sheet .row{display:flex;gap:8px;justify-content:flex-end}
+
+.foot{padding:0 16px 24px;color:var(--faint);font-size:13.2px}
+.foot button{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;font-size:13.2px}
+
+@media (max-width:760px){
+  .board{grid-template-columns:1fr}
+  .col-h .tog{display:inline}
+  .col.collapsed .col-b,.col.collapsed .add{display:none}
+  .top{flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Day Board</h1>
+  <span class="date" id="todayLabel"></span>
+  <span class="spacer"></span>
+  <span class="sync"><span id="syncLabel">Loading…</span>
+    <button class="btn" id="syncBtn" title="Reload everything from the server"><span class="spin">⟳</span> Sync</button></span>
+</header>
+
+<main class="board" id="board">
+  <section class="col" data-col="floating">
+    <div class="col-h"><h2>Floating</h2><span class="count" id="c-floating"></span><button class="tog">Hide</button></div>
+    <div class="add">
+      <input id="addInput" placeholder="Add a task… (try “Email Kinsey fri” or “Send recap every fri”)" autocomplete="off" aria-label="New task">
+      <span class="hint">N</span>
+      <div class="parsed" id="parsed"></div>
+    </div>
+    <div class="col-b" id="b-floating" data-zone="floating"></div>
+  </section>
+  <section class="col" data-col="today">
+    <div class="col-h"><h2>Today</h2><span class="count" id="c-today"></span><button class="tog">Hide</button></div>
+    <div class="col-b" id="b-today" data-zone="today"></div>
+  </section>
+  <section class="col" data-col="coming">
+    <div class="col-h"><h2>Coming up</h2><span class="count" id="c-coming"></span><button class="tog">Hide</button></div>
+    <div class="col-b" id="b-coming" data-zone="coming"></div>
+  </section>
+</main>
+<p class="foot" id="foot"></p>
+
+<div id="toastRoot"></div>
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+"use strict";
+// ---------- dates (local, YYYY-MM-DD) ----------
+const pad=n=>String(n).padStart(2,"0");
+const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parseIso=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const addDays=(s,n)=>{const d=parseIso(s);d.setDate(d.getDate()+n);return iso(d)};
+const TODAY=iso(new Date());
+const isWeekend=s=>{const g=parseIso(s).getDay();return g===0||g===6};
+const nextWorkday=s=>{let d=addDays(s,1);while(isWeekend(d))d=addDays(d,1);return d};
+const daysBetween=(a,b)=>Math.round((parseIso(b)-parseIso(a))/864e5);
+const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmt=s=>{const d=parseIso(s);return DOW[d.getDay()]+" "+MON[d.getMonth()]+" "+d.getDate()};
+const WEEKDAYS={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,weds:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+
+// Trailing human-readable date in quick add: today, tomorrow, weekday names, "oct 14", "10/14"
+function parseQuick(text){
+  const m=text.match(/\s+(today|tod|tomorrow|tmrw|tmr|tom|sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:s|nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|\d{1,2}\/\d{1,2})\s*$/i);
+  if(!m) return {title:text.trim(),due:null};
+  const w=m[1].toLowerCase(); let due=null;
+  if(/^(today|tod)$/.test(w)) due=TODAY;
+  else if(/^(tomorrow|tmrw|tmr|tom)$/.test(w)) due=addDays(TODAY,1);
+  else if(w in WEEKDAYS){const target=WEEKDAYS[w];let d=addDays(TODAY,1);while(parseIso(d).getDay()!==target)d=addDays(d,1);due=d}
+  else if(/\//.test(w)){const [mo,da]=w.split("/").map(Number);due=rollYear(mo-1,da)}
+  else {const mm=w.match(/^([a-z]+)\.?\s+(\d{1,2})$/);const idx=MON.findIndex(x=>mm[1].startsWith(x.toLowerCase()));if(idx>=0)due=rollYear(idx,Number(mm[2]))}
+  if(!due) return {title:text.trim(),due:null};
+  const title=text.slice(0,m.index).trim();
+  return title?{title,due}:{title:text.trim(),due:null};
+}
+function rollYear(mo,da){const now=parseIso(TODAY);let d=new Date(now.getFullYear(),mo,da);if(d.getMonth()!==mo)return null;if(iso(d)<TODAY)d=new Date(now.getFullYear()+1,mo,da);return iso(d)}
+
+// ---------- recurrence: "weekday" (Mon–Fri) or "w1".."w5" (one weekday) ----------
+const RULES=[["","Never"],["weekday","Every weekday (Mon–Fri)"],["w1","Every Monday"],["w2","Every Tuesday"],["w3","Every Wednesday"],["w4","Every Thursday"],["w5","Every Friday"]];
+const ruleLabel=r=>(RULES.find(x=>x[0]===r)||["","Never"])[1].replace(" (Mon–Fri)","");
+const occurs=(rule,d)=>{const g=parseIso(d).getDay();return rule==="weekday"?(g>=1&&g<=5):g===Number(rule.slice(1))};
+function nextOcc(rule,after){let d=addDays(after,1);for(let i=0;i<14&&!occurs(rule,d);i++)d=addDays(d,1);return d}
+function parseRepeat(text){
+  const m=text.match(/\s+(every\s+weekday|every\s+day|daily|weekdays|every\s+(mon|tue|wed|thu|fri)[a-z]*)\s*$/i);
+  if(!m) return null;
+  const title=text.slice(0,m.index).trim(); if(!title) return null;
+  const rule=m[2]?"w"+({mon:1,tue:2,wed:3,thu:4,fri:5})[m[2].toLowerCase()]:"weekday";
+  return {title,rule};
+}
+
+// ---------- state ----------
+// The server holds the record; this browser keeps a cache so the board shows instantly and survives a dropped connection.
+const CACHE="dayboard-cache-v1";
+let tasks=[],series=[];
+let synced=new Map();      // key -> JSON last confirmed by the server
+let loaded=false;
+function load(st){tasks=Array.isArray(st.tasks)?st.tasks:[];series=Array.isArray(st.series)?st.series:[]}
+try{const st=JSON.parse(localStorage.getItem(CACHE)||"null");if(st){load(st);if(st.synced)synced=new Map(st.synced)}}catch(e){}
+const byId=id=>tasks.find(t=>t.id===id);
+const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+let laterOpen=false;
+
+function cacheLocal(){try{localStorage.setItem(CACHE,JSON.stringify({tasks,series,synced:[...synced]}))}catch(e){}}
+let pushTimer=null,pushing=false,failCount=0;
+function save(){cacheLocal();if(!loaded)return;clearTimeout(pushTimer);pushTimer=setTimeout(push,400);setStatus("saving")}
+function pendingOps(){
+  const cur=new Map();
+  tasks.forEach(t=>cur.set("task:"+t.id,{kind:"task",data:t}));
+  series.forEach(x=>cur.set("series:"+x.id,{kind:"series",data:x}));
+  const ops=[];
+  cur.forEach((v,k)=>{const j=JSON.stringify(v.data);if(synced.get(k)!==j)ops.push({op:"upsert",key:k,kind:v.kind,data:v.data,_j:j})});
+  synced.forEach((j,k)=>{if(!cur.has(k))ops.push({op:"delete",key:k})});
+  return ops;
+}
+async function push(){
+  if(pushing){clearTimeout(pushTimer);pushTimer=setTimeout(push,400);return}
+  const ops=pendingOps(); if(!ops.length){setStatus("saved");return}
+  pushing=true;
+  try{
+    for(let i=0;i<ops.length;i+=25){
+      const chunk=ops.slice(i,i+25);
+      const res=await fetch("/api/ops",{method:"POST",headers:{"content-type":"application/json"},credentials:"same-origin",
+        body:JSON.stringify({ops:chunk.map(o=>o.op==="delete"?{op:"delete",key:o.key}:{op:"upsert",key:o.key,kind:o.kind,data:o.data})})});
+      const out=await res.json().catch(()=>({}));
+      if(!res.ok||!out.ok) throw new Error(out.error||("Server answered "+res.status));
+      chunk.forEach(o=>{if(o.op==="delete")synced.delete(o.key);else synced.set(o.key,o._j)});
+    }
+    failCount=0; cacheLocal(); setStatus(pendingOps().length?"saving":"saved");
+    if(pendingOps().length){pushing=false;return push()}
+  }catch(err){
+    failCount++; setStatus("error",String(err.message||err));
+    clearTimeout(pushTimer); pushTimer=setTimeout(push,Math.min(30000,3000*failCount));
+  }finally{pushing=false}
+}
+async function pull(){
+  setStatus("loading");
+  try{
+    const res=await fetch("/api/state",{credentials:"same-origin",cache:"no-store"});
+    const st=await res.json();
+    if(!res.ok||!Array.isArray(st.tasks)) throw new Error(st.error||("Server answered "+res.status));
+    const first=!loaded;
+    // Keep any edits made on this device that never reached the server.
+    const unsent=loaded?pendingOps():[];
+    load(st);
+    synced=new Map();
+    tasks.forEach(t=>synced.set("task:"+t.id,JSON.stringify(t)));
+    series.forEach(x=>synced.set("series:"+x.id,JSON.stringify(x)));
+    if(first){
+      // First load on this device: anything cached locally but missing on the server is sent up.
+      try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");
+        if(c&&Array.isArray(c.tasks)){const have=new Set(tasks.map(t=>t.id));c.tasks.forEach(t=>{if(!have.has(t.id)&&!(c.synced||[]).some(([k])=>k==="task:"+t.id))tasks.push(t)})}}catch(e){}
+    }
+    unsent.forEach(o=>{if(o.op!=="upsert")return;const list=o.kind==="task"?tasks:series;const i=list.findIndex(x=>x.id===o.data.id);if(i>=0)list[i]=o.data;else list.push(o.data)});
+    loaded=true; lastSync=Date.now(); render(); save();
+    setStatus(pendingOps().length?"saving":"saved");
+  }catch(err){
+    setStatus("error","Couldn't load from the server. Showing what this device last saw.");
+    render();
+  }
+}
+let statusState="loading",statusMsg="";
+function setStatus(st,msg){statusState=st;statusMsg=msg||"";paintStatus()}
+function paintStatus(){
+  const el=document.querySelector("#syncLabel"); if(!el)return;
+  el.classList.toggle("status-bad",statusState==="error");
+  if(statusState==="loading") el.textContent="Loading…";
+  else if(statusState==="saving") el.textContent="Saving…";
+  else if(statusState==="error") el.textContent="Not saved yet · retrying";
+  else {const m=Math.round((Date.now()-lastSync)/6e4);el.textContent=m<1?"Saved · synced just now":`Saved · synced ${m} min ago`}
+  el.title=statusMsg;
+  const f=document.querySelector("#foot"); if(f) f.textContent=statusState==="error"&&statusMsg?statusMsg:"";
+}
+
+// Every missed occurrence becomes its own task (they stack); one upcoming occurrence is kept ahead.
+function makeInstance(s,occ){tasks.push({id:s.id+"-"+occ,source:"me",title:s.title,body:s.body||"",ctx:"",due:occ,occ,seriesId:s.id,time:null,created:Date.now(),rank:null})}
+function generate(){
+  let changed=false;
+  series.forEach(s=>{
+    for(let guard=0;guard<400;guard++){
+      const n=nextOcc(s.rule,s.genThrough||addDays(s.start,-1));
+      if(n<=TODAY){makeInstance(s,n);s.genThrough=n;changed=true;continue}
+      if(!tasks.some(x=>x.seriesId===s.id&&x.occ>TODAY)){makeInstance(s,n);s.genThrough=n;changed=true}
+      break;
+    }
+  });
+  if(changed) save();
+}
+function setRepeat(t,rule){
+  if(t.seriesId){
+    const s=series.find(x=>x.id===t.seriesId);
+    tasks=tasks.filter(x=>!(x.seriesId===t.seriesId&&x.occ>TODAY&&x!==t));
+    if(!rule){
+      series=series.filter(x=>x!==s);
+      tasks.forEach(x=>{if(x.seriesId===s.id){delete x.seriesId;delete x.occ}});
+    } else {
+      s.rule=rule;
+      const anchor=[TODAY,t.occ||TODAY,t.due||TODAY].sort().pop();
+      s.genThrough=anchor;
+    }
+  } else if(rule){
+    const base=t.due&&t.due>TODAY?t.due:TODAY;
+    const start=occurs(rule,base)?base:nextOcc(rule,base);
+    const s={id:newId("s"),rule,title:t.title,body:t.body||"",start,genThrough:start};
+    series.push(s); t.seriesId=s.id; t.occ=start; t.due=start; t.rank=null;
+  }
+  generate(); save(); render();
+}
+function editField(t,field,val){
+  t[field]=val;
+  if(t.seriesId){
+    const s=series.find(x=>x.id===t.seriesId); if(s) s[field]=val;
+    tasks.forEach(x=>{if(x.seriesId===t.seriesId) x[field]=val});
+  }
+  save(); render();
+}
+
+// Default ordering: by due date then time; floating = your tasks newest first, synced undated at bottom.
+function defaultRank(t){
+  if(!t.due) return t.source==="me" ? -t.created : 1e15 + t.created;
+  return parseIso(t.due).getTime() + (t.time ? (Number(t.time.slice(0,2))*60+Number(t.time.slice(3)))*6e4 : 0);
+}
+const rank=t=>t.rank==null?defaultRank(t):t.rank;
+const sortR=a=>a.sort((x,y)=>rank(x)-rank(y));
+
+function zoneOf(t){
+  if(!t.due) return "floating";
+  if(t.due<=TODAY) return "today";
+  if(daysBetween(TODAY,t.due)<=7) return "coming";
+  return "later";
+}
+
+// ---------- rendering ----------
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let openId=null;
+const linkify=s=>esc(s).replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+const urlsIn=s=>(String(s||"").match(/https?:\/\/[^\s<]+[^\s<.,;:!?)\]]/g)||[]);
+const srcName=t=>t.source==="hubspot"?"HubSpot":t.source==="linear"?"Linear":"";
+const linksHTML=t=>{const u=urlsIn(t.body);return u.length?`<div class="e-links">${u.map(x=>`<a href="${esc(x)}" target="_blank" rel="noopener">${esc(x)}</a>`).join("")}</div>`:""};
+
+function cardHTML(t){
+  const cls=t.source==="hubspot"?"hub":t.source==="linear"?"lin":"me";
+  const own=t.source==="me";
+  const open=t.id===openId;
+  const stale=own&&!t.due&&(Date.now()-t.created)>21*864e5;
+  const z=zoneOf(t);
+  let due="";
+  if(z==="today"&&t.due<TODAY){const n=daysBetween(t.due,TODAY);due=`<span class="over">${n}d overdue</span>`}
+  else if(z==="later"||(open&&t.due)) due=`<span class="due">${t.due===TODAY?"Today":fmt(t.due)}</span>`;
+  const src=own?"":`<span class="src ${cls}">${srcName(t)}</span>`;
+  const ctx=t.ctx?`<span class="ctx" title="${esc(t.ctx)}">${esc(t.ctx)}</span>`:"";
+  const view=t.url&&!open?`<a class="view" href="${esc(t.url)}" target="_blank" rel="noopener">View</a>`:"";
+  const timeTip=t.time?` title="Due ${t.time}"`:"";
+  const rec=t.seriesId?'<span class="rec" title="Repeats">↻</span>':"";
+  const notes=t.body&&!open?'<span class="rec" title="Has details">≡</span>':"";
+  const metaInner=[due,rec,notes,src,ctx,view].filter(Boolean).join("");
+  const title=open&&own?`<input class="e-title" data-field="title" value="${esc(t.title)}" aria-label="Title">`:`<div class="t">${esc(t.title)}</div>`;
+  let exp="";
+  if(open){
+    const s=t.seriesId&&series.find(x=>x.id===t.seriesId);
+    exp=`<div class="exp">
+      ${own?`<textarea class="e-body" data-field="body" rows="3" placeholder="Add details or links…" aria-label="Details">${esc(t.body||"")}</textarea>${linksHTML(t)}`
+           :`<div class="e-desc${t.body?"":" empty"}">${t.body?linkify(t.body):"No description in "+srcName(t)+"."}</div>`}
+      <div class="e-row"><span class="lbl">Due</span>
+        <button class="btn small" data-act="today">Today</button>
+        <button class="btn small" data-act="next">Next day</button>
+        <label class="btn small">Pick date…<input class="overlay" type="date" data-act="pick" value="${t.due||""}" aria-label="Pick a date"></label>
+        ${own&&t.due?'<button class="linkbtn" data-act="clear">Clear date</button>':""}
+      </div>
+      ${own?`<div class="e-row"><span class="lbl">Repeat</span><select data-act="repeat" aria-label="Repeat">${RULES.map(([v,l])=>`<option value="${v}"${(s?s.rule:"")===v?" selected":""}>${l}</option>`).join("")}</select></div>`:""}
+      ${s?'<p class="e-note">Missed days stack as separate tasks. Title and details changes apply to every open copy; date changes move only this one.</p>':""}
+      ${!own?`<p class="e-note">Edit the text in ${srcName(t)}. Date changes and Done sync back.</p>`:""}
+      <div class="e-foot">
+        <button class="btn small primary" data-act="done-btn">Mark done</button>
+        ${t.url?`<a class="btn small" href="${esc(t.url)}" target="_blank" rel="noopener">Open in ${srcName(t)}</a>`:""}
+        <span class="spacer"></span>
+        ${own?'<button class="linkbtn" data-act="delete">Delete</button>':""}
+        <button class="btn small" data-act="close">Close</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="card ${cls}${stale?" stale":""}${open?" open":""}" draggable="${open?"false":"true"}" data-id="${t.id}"${stale?' title="Untouched for 3+ weeks"':timeTip}>
+    <button class="chk" data-act="done" aria-label="Mark done"></button>
+    ${title}
+    ${metaInner?`<div class="meta">${metaInner}</div>`:""}
+    ${open?exp:`<div class="acts">
+      <button data-act="today">Today</button>
+      <button data-act="next">Next day</button>
+      <label>Date…<input class="overlay" type="date" data-act="pick" aria-label="Pick a date"></label>
+      ${own?'<button class="del" data-act="delete" aria-label="Delete">Delete</button>':""}
+    </div>`}
+  </div>`;
+}
+
+let bulkConfirm=false;
+function render(){
+  generate();
+  if(openId&&!byId(openId)) openId=null;
+  $("#todayLabel").textContent=fmt(TODAY);
+  const fl=sortR(tasks.filter(t=>zoneOf(t)==="floating"));
+  const today=tasks.filter(t=>zoneOf(t)==="today");
+  const over=sortR(today.filter(t=>t.due<TODAY));
+  const tod=sortR(today.filter(t=>t.due===TODAY));
+  const coming=tasks.filter(t=>zoneOf(t)==="coming");
+  const later=tasks.filter(t=>zoneOf(t)==="later").sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:rank(a)-rank(b));
+
+  // Floating: your tasks, then a divider, then undated synced tasks (still reorderable)
+  $("#b-floating").innerHTML=fl.length?fl.map(cardHTML).join(""):'<div class="empty-col">Nothing floating. Type above and press Enter.</div>';
+  $("#c-floating").textContent=fl.length;
+
+  let h="";
+  if(over.length){
+    h+=`<div class="group-h over-h">Overdue <span class="n">${over.length}</span><button class="bulk" data-act="bulk">Move all to today</button></div>`;
+    if(bulkConfirm) h+=`<div class="confirm">Move ${over.length} overdue task${over.length>1?"s":""} to today? This changes their due dates in Linear and HubSpot.<span class="spacer"></span><button class="btn" data-act="bulk-cancel">Cancel</button><button class="btn danger" data-act="bulk-go">Move</button></div>`;
+    h+=over.map(cardHTML).join("");
+    h+=`<div class="group-h" data-date="${TODAY}">Due today <span class="n">${tod.length}</span></div>`;
+  }
+  h+=tod.length?tod.map(cardHTML).join(""):(over.length?"":'<div class="empty-col">Nothing due today.</div>');
+  $("#b-today").innerHTML=h;
+  $("#c-today").textContent=today.length;
+
+  // Coming Up: next 7 days grouped by day label; weekends only shown if something is due
+  let c="";
+  for(let i=1;i<=7;i++){
+    const d=addDays(TODAY,i);
+    const items=sortR(coming.filter(t=>t.due===d));
+    if(isWeekend(d)&&!items.length) continue;
+    c+=`<div class="group-h" data-date="${d}">${i===1?"Tomorrow · ":""}${fmt(d)} <span class="n">${items.length||""}</span></div>`;
+    c+=items.map(cardHTML).join("");
+  }
+  c+=`<button class="later" data-act="later" data-zone="later">${laterOpen?"Hide later":"Later"} (${later.length}) ${laterOpen?"▴":"▾"}</button>`;
+  if(laterOpen) c+=later.map(cardHTML).join("");
+  $("#b-coming").innerHTML=c;
+  $("#c-coming").textContent=coming.length;
+}
+
+// ---------- mutations ----------
+function setDue(t,due,silent){
+  if(t.source!=="me"&&!due){toast("Linear and HubSpot tasks always keep a date.");return false}
+  t.due=due; t.rank=null; save(); render();
+  if(!silent&&t.source!=="me") toast(`${due===TODAY?"Moved to today":"Moved to "+fmt(due)} · would update ${t.source==="hubspot"?"HubSpot":"Linear"}`);
+  return true;
+}
+let undoStack=null;
+function complete(id){
+  const t=byId(id); const el=document.querySelector(`.card[data-id="${id}"]`);
+  if(el) el.classList.add("leaving");
+  setTimeout(()=>{
+    const idx=tasks.indexOf(t); if(idx<0)return;
+    tasks.splice(idx,1); save(); render();
+    undoStack={t,idx};
+    toast(`Done: ${t.title}${t.source!=="me"?" · would mark done in "+(t.source==="hubspot"?"HubSpot":"Linear"):""}`,"Undo",()=>{tasks.splice(undoStack.idx,0,undoStack.t);save();render()});
+  },180);
+}
+function remove(id){
+  const t=byId(id); const idx=tasks.indexOf(t);
+  tasks.splice(idx,1); save(); render();
+  toast(t.seriesId?"Deleted this one · it still repeats":"Deleted","Undo",()=>{tasks.splice(idx,0,t);save();render()});
+}
+
+// ---------- expand / collapse ----------
+function toggleOpen(id){openId=openId===id?null:id;render();
+  if(openId){const ta=document.querySelector(`.card[data-id="${openId}"] .e-body`);if(ta&&!ta.value)ta.focus()}}
+// Save typing without re-rendering, so the cursor and the next click are never lost.
+document.addEventListener("input",e=>{
+  const f=e.target.dataset&&e.target.dataset.field; if(!f)return;
+  const t=byId(e.target.closest(".card").dataset.id); if(!t)return;
+  if(f==="body"){quietEdit(t,"body",e.target.value);const box=e.target.parentElement.querySelector(".e-links");const html=linksHTML(t);
+    if(box)box.outerHTML=html||"";else if(html)e.target.insertAdjacentHTML("afterend",html)}
+});
+document.addEventListener("change",e=>{
+  const f=e.target.dataset&&e.target.dataset.field; if(f!=="title")return;
+  const t=byId(e.target.closest(".card").dataset.id); const v=e.target.value.trim();
+  if(t&&v) quietEdit(t,"title",v); else if(t) e.target.value=t.title;
+});
+function quietEdit(t,field,val){
+  t[field]=val;
+  if(t.seriesId){const s=series.find(x=>x.id===t.seriesId);if(s)s[field]=val;tasks.forEach(x=>{if(x.seriesId===t.seriesId)x[field]=val})}
+  save();
+}
+
+// ---------- toast + modal ----------
+let toastTimer;
+function toast(msg,label,fn){
+  clearTimeout(toastTimer);
+  const root=$("#toastRoot");
+  root.innerHTML=`<div class="toast" role="status"><span>${esc(msg)}</span>${label?`<button>${esc(label)}</button>`:""}</div>`;
+  if(label) root.querySelector("button").onclick=()=>{fn();root.innerHTML=""};
+  toastTimer=setTimeout(()=>root.innerHTML="",5000);
+}
+function askDate(t,onPick){
+  const root=$("#modalRoot");
+  root.innerHTML=`<div class="modal"><div class="sheet" role="dialog" aria-label="Pick a date"><h3>Due date for “${esc(t.title)}”</h3>
+    <input type="date" id="pickDate" min="${TODAY}" value="${addDays(TODAY,8)}">
+    <div class="row"><button class="btn" id="pc">Cancel</button><button class="btn primary" id="po">Set date</button></div></div></div>`;
+  const close=()=>root.innerHTML="";
+  $("#pc").onclick=close;
+  root.querySelector(".modal").onclick=e=>{if(e.target.classList.contains("modal"))close()};
+  $("#po").onclick=()=>{const v=$("#pickDate").value;close();if(v)onPick(v)};
+  $("#pickDate").focus();
+}
+
+// ---------- quick add ----------
+const input=$("#addInput");
+input.addEventListener("input",()=>{
+  const r=parseRepeat(input.value); if(r){$("#parsed").textContent="↻ "+ruleLabel(r.rule);return}
+  const p=parseQuick(input.value);$("#parsed").textContent=p.due?"→ "+(p.due===TODAY?"Today":fmt(p.due)):"";
+});
+input.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){input.blur();return}
+  if(e.key!=="Enter"||!input.value.trim())return;
+  const r=parseRepeat(input.value);
+  if(r){
+    series.push({id:newId("s"),rule:r.rule,title:r.title,body:"",start:TODAY,genThrough:addDays(TODAY,-1)});
+    input.value="";$("#parsed").textContent="";save();render();
+    toast("Repeats "+ruleLabel(r.rule).toLowerCase()); return;
+  }
+  const p=parseQuick(input.value);
+  tasks.push({id:newId("t"),source:"me",title:p.title,ctx:"",body:"",due:p.due,time:null,created:Date.now(),rank:null});
+  input.value="";$("#parsed").textContent="";save();render();
+  if(p.due) toast("Added to "+(p.due===TODAY?"Today":fmt(p.due)));
+});
+document.addEventListener("keydown",e=>{
+  const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)||document.activeElement.isContentEditable;
+  if(e.key==="Escape"&&openId){document.activeElement.blur();openId=null;render();return}
+  if(e.key==="Enter"&&document.activeElement.classList.contains("e-title")){document.activeElement.blur();render();return}
+  if(!typing&&(e.key==="n"||e.key==="/")&&!e.metaKey&&!e.ctrlKey){e.preventDefault();input.focus()}
+});
+
+// ---------- clicks ----------
+document.addEventListener("click",e=>{
+  const a=e.target.closest("[data-act]");
+  if(!a){
+    const c=e.target.closest(".card");
+    if(c&&!e.target.closest("a,.acts,.exp,input,textarea,select,label")) toggleOpen(c.dataset.id);
+    return;
+  }
+  const card=a.closest(".card"); const t=card?byId(card.dataset.id):null;
+  switch(a.dataset.act){
+    case "done": complete(t.id); break;
+    case "today": setDue(t,TODAY); break;
+    case "next": setDue(t,nextWorkday(TODAY)); break;
+    case "delete": if(openId===t.id)openId=null; remove(t.id); break;
+    case "done-btn": openId=null; complete(t.id); break;
+    case "close": openId=null; render(); break;
+    case "clear": setDue(t,null); break;
+    case "bulk": bulkConfirm=true; render(); break;
+    case "bulk-cancel": bulkConfirm=false; render(); break;
+    case "bulk-go": {
+      const over=tasks.filter(x=>x.due&&x.due<TODAY);
+      over.forEach(x=>{x.due=TODAY;x.rank=null});
+      bulkConfirm=false; save(); render(); toast(`Moved ${over.length} to today`); break;}
+    case "later": laterOpen=!laterOpen; render(); break;
+  }
+});
+document.addEventListener("change",e=>{
+  const act=e.target.dataset.act; if(act!=="pick"&&act!=="repeat")return;
+  const t=byId(e.target.closest(".card").dataset.id); if(!t)return;
+  if(act==="pick"){ if(e.target.value) setDue(t,e.target.value); return }
+  const v=e.target.value||null;
+  setRepeat(t,v);
+  toast(v?"Repeats "+ruleLabel(v).toLowerCase():"Stopped repeating");
+});
+document.querySelectorAll(".tog").forEach(b=>b.onclick=()=>{const col=b.closest(".col");col.classList.toggle("collapsed");b.textContent=col.classList.contains("collapsed")?"Show":"Hide"});
+
+// ---------- drag and drop ----------
+let dragId=null;
+document.addEventListener("dragstart",e=>{
+  const c=e.target.closest&&e.target.closest(".card"); if(!c)return;
+  dragId=c.dataset.id; c.classList.add("dragging");
+  e.dataTransfer.effectAllowed="move"; try{e.dataTransfer.setData("text/plain",dragId)}catch(_){}
+});
+document.addEventListener("dragend",()=>{dragId=null;clearHints();document.querySelectorAll(".dragging").forEach(x=>x.classList.remove("dragging"))});
+function clearHints(){document.querySelectorAll(".drop-ok,.drop-before").forEach(x=>x.classList.remove("drop-ok","drop-before"))}
+
+function target(e){
+  const header=e.target.closest(".group-h[data-date]");
+  if(header) return {kind:"date",date:header.dataset.date,el:header};
+  const later=e.target.closest(".later");
+  if(later) return {kind:"later",el:later};
+  const body=e.target.closest(".col-b"); if(!body)return null;
+  const card=e.target.closest(".card");
+  return {kind:"zone",zone:body.dataset.zone,el:body,card};
+}
+function allowed(t,tg){
+  if(!t||!tg)return false;
+  if(tg.kind==="zone"&&tg.zone==="floating"&&t.source!=="me"&&zoneOf(t)!=="floating")return false;
+  return true;
+}
+document.addEventListener("dragover",e=>{
+  if(!dragId)return;
+  const tg=target(e); const t=byId(dragId);
+  clearHints();
+  if(!allowed(t,tg))return;
+  e.preventDefault();
+  tg.el.classList.add("drop-ok");
+  if(tg.card&&tg.card.dataset.id!==dragId) tg.card.classList.add("drop-before");
+});
+document.addEventListener("drop",e=>{
+  if(!dragId)return;
+  const tg=target(e); const t=byId(dragId); clearHints();
+  if(!tg)return;
+  if(!allowed(t,tg)){toast("Linear and HubSpot tasks always keep a date.");return}
+  e.preventDefault();
+  const from=zoneOf(t);
+  if(tg.kind==="date"){ if(t.due!==tg.date) setDue(t,tg.date); return }
+  if(tg.kind==="later"){ askDate(t,d=>setDue(t,d)); return }
+  if(tg.zone==="floating"){
+    if(from!=="floating"){t.due=null;t.rank=null}
+    placeBefore(t,tg.card,"floating"); return;
+  }
+  if(tg.zone==="today"){
+    if(from!=="today"){ if(!setDue(t,TODAY,true))return; toastIfSynced(t,TODAY) }
+    // Reordering only within the same group (overdue stays overdue)
+    placeBefore(t,tg.card,"today"); return;
+  }
+  if(tg.zone==="coming"){
+    // Dropping on a card in Coming Up takes that card's day; dropping on empty space asks for a date
+    if(tg.card&&tg.card.dataset.id!==t.id){
+      const ref=byId(tg.card.dataset.id);
+      if(t.due!==ref.due){ if(!setDue(t,ref.due,true))return; toastIfSynced(t,ref.due) }
+      placeBefore(t,tg.card,"coming"); return;
+    }
+    if(from!=="coming") askDate(t,d=>setDue(t,d));
+  }
+});
+function toastIfSynced(t,d){ if(t.source!=="me") toast(`${d===TODAY?"Moved to today":"Moved to "+fmt(d)} · would update ${t.source==="hubspot"?"HubSpot":"Linear"}`) }
+
+// Give the task a rank just before the card it was dropped on (same list), or at the end.
+function placeBefore(t,cardEl,zone){
+  const list=sortR(tasks.filter(x=>x!==t&&zoneOf(x)===zone&&(zone!=="today"||(x.due<TODAY)===(t.due<TODAY))&&(zone!=="coming"||x.due===t.due)));
+  const refId=cardEl&&cardEl.dataset.id!==t.id?cardEl.dataset.id:null;
+  const i=refId?list.findIndex(x=>x.id===refId):-1;
+  if(i===-1){ t.rank=list.length?rank(list[list.length-1])+1000:defaultRank(t) }
+  else { const prev=i>0?rank(list[i-1]):rank(list[i])-2000; t.rank=(prev+rank(list[i]))/2 }
+  save(); render();
+}
+
+// ---------- sync ----------
+let lastSync=Date.now();
+$("#syncBtn").onclick=()=>{
+  const b=$("#syncBtn"); b.classList.remove("spinning"); void b.offsetWidth; b.classList.add("spinning");
+  push().then(pull);
+};
+setInterval(paintStatus,30000);
+// Pick up changes made on another device or by Claude when the window comes back into focus.
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&loaded&&!pendingOps().length)pull()});
+
+render();
+pull();
+})();
+</script>
+</body>
+</html>
